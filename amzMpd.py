@@ -37,7 +37,7 @@ def FindAddPlaylist(key,name):
         client.findadd(key,name)
         #print("Volume set is {}".format(volume))
     except :
-        print("FindAdd Playlist  Volume ERROR")
+        print("FindAdd Playlist  ERROR")
         return False
 
 def GetVolume():
@@ -70,6 +70,26 @@ def GetStatusMpd():
     except :
         print("Get Status ERROR")
         return "ERROR"
+def GetUpdateMpd():
+    try:
+        client = MPDClient()
+        client.timeout = 10
+        client.idletimeout = None
+        client.connect("localhost", 6600)
+        client.clearerror()
+        #print("GetUpdate")
+        status = client.idle()
+        #print(status)
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return status #int(volume)
+
+    except :
+        print(" Get Idle ERROR")
+        return "ERROR"
+
 def GetPlaylistMpd():
     try:
         client = MPDClient()
@@ -91,7 +111,7 @@ def GetPlaylistMpd():
         return "ERROR"
 def GetListAlbumMpd():
     try:
-        listAlbum = GetListMpd("album")
+        listAlbum = GetListMpd2("album")
         albums = []
         for dictionary in listAlbum:
              if "album" in dictionary:
@@ -105,7 +125,7 @@ def GetListAlbumMpd():
     except :
         print("Get Status ERROR")
         return "ERROR"
-
+#list('Title', 'Artist', artist)
 def GetSongMpd():
     try:
         client = MPDClient()
@@ -120,8 +140,71 @@ def GetSongMpd():
     except :
         print("Get Status ERROR")
         return "ERROR"
+def GetListOutputs():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        outputs = client.outputs()
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return outputs #int(volume)
 
-def GetListMpd(cmd):
+    except :
+        print("Get Status ERROR")
+        return "ERROR"
+def SetOutputs2(id):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        outputs = client.outputs()
+        listId = []
+        for item in outputs:
+             if "outputid" in item:
+                 listId.append(int(item["outputid"]))
+        print(listId)
+        for item in listId:
+             client.disableoutput(item)
+        client.enableoutput(id)
+        #print(GetListOutputs())
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return outputs #int(volume)
+
+    except :
+        print("Get Status ERROR")
+        return "ERROR"
+def SetOutputs(id,en):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        #outputs = client.outputs()
+        #listId = []
+        #for item in outputs:
+        #     if "outputid" in item:
+        #         listId.append(int(item["outputid"]))
+        #print(listId)
+        #for item in listId:
+        #     client.disableoutput(item)
+        if en ==1:
+             client.enableoutput(id)
+        else:
+             client.disableoutput(id)
+        #print(GetListOutputs())
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return "Send Output OK" #int(volume)
+
+    except :
+        print("Get Status ERROR")
+        return "ERROR"
+
+def GetListMpd2(cmd):
     try:
         client = MPDClient()
         client.connect("localhost", 6600)
@@ -135,7 +218,122 @@ def GetListMpd(cmd):
     except :
         print("Get Status ERROR")
         return "ERROR"
+def GetListFiles(url):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        listFiles = client.listfiles(url)
+        files = []
+        for dictionary in listFiles:
+             if "directory" in dictionary:
+                  files.append(dictionary["directory"])
+             if "file" in dictionary:
+                  files.append(dictionary["file"])
 
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return files #int(volume)
+
+    except :
+        print("Get list file ERROR")
+        return "list file ERROR"
+def GetListDir(url):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        listFiles = client.listfiles(url)
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        files = []
+        for dictionary in listFiles:
+             if "directory" in dictionary:
+                  files.append(dictionary["directory"])
+
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return files #int(volume)
+
+        #return list #int(volume)
+
+    except :
+        print("Get list file ERROR")
+        return "list file ERROR"
+def GetListFiles2(url):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        listFiles = client.listall(url)
+        #print(listFiles)
+        files = []
+        for dictionary in listFiles:
+             if "file" in dictionary:
+                  if not ".cue/" in dictionary["file"]:
+                     # print(dictionary["file"])
+                      files.append(dictionary["file"])
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return files #int(volume)
+
+    except :
+        print("Get list file ERROR")
+        return "list file ERROR"
+
+def GetListMpd(cmd,cmd2,cmd3):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        list = client.list(cmd,cmd2,cmd3)
+        #print(client.status()['volume'])
+        #s1 = json.dumps(status)
+        #volume = json.loads(s1)["volume"]
+        #print(volume)
+        return list #int(volume)
+
+    except :
+        print("Get Status ERROR")
+        return "ERROR"
+def GetTitlesAlbum(indexAlbums):
+    listMpd = GetListMpd2("album")
+    #print(listMpd)
+    try:
+        albums = []
+        for dictionary in listMpd:
+             if "album" in dictionary:
+                  albums.append(dictionary["album"])
+        titles = GetListMpd("title","album",albums[indexAlbums])
+        #print(titles)
+        Titles = []
+        for dictionary in titles:
+             if "title" in dictionary:
+                  Titles.append(dictionary["title"])
+        return Titles 
+    except:
+        print("Can not read album")
+def GetFilesAlbum(indexAlbums):
+    listMpd = GetListMpd2("album")
+    #print(listMpd)
+    try:
+        albums = []
+        for dictionary in listMpd:
+             if "album" in dictionary:
+                  albums.append(dictionary["album"])
+        files = GetListMpd("file","album",albums[indexAlbums])
+        #print(files)
+        Files = []
+        for dictionary in files:
+             if "file" in dictionary:
+                  Files.append(dictionary["file"])
+        return Files
+    except:
+        print("Can not read album")
 
 def PlayMpdRadio(Url: str):
     try:
@@ -155,6 +353,34 @@ def StopMpd():
         client.stop()
     except :
         return False
+def PlayAddMpd(title,album):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.findadd("title",title,"album",album)
+        client.play()
+    except :
+        return False
+
+def UpdateMpd():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.clearerror()
+        client.update()
+    except :
+        return False
+
+
+def ClearPlaylistMpd():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.clear()
+    except :
+        return False
+
+
 def PauseMpd(state):
     try:
         client = MPDClient()
@@ -169,14 +395,6 @@ def NextMpd():
         client.next()
     except :
         return False
-def UpdateMpd():
-    try:
-        client = MPDClient()
-        client.connect("localhost", 6600)
-        client.update()
-    except :
-        return False
-
 def PreviousMpd():
     try:
         client = MPDClient()

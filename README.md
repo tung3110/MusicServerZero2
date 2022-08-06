@@ -1,2 +1,2 @@
-# My Demo Repository
-by truyenthanhso.com
+# Music Server
+by AMZ Ltd

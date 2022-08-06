@@ -1,0 +1,77 @@
+from mpd import (MPDClient, CommandError, FailureResponseCode)
+import json
+def CheckPlayMpd(FileName: str) -> bool:
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        status = client.status()
+        s1 = json.dumps(status)
+        state = json.loads(s1)["state"]
+        #print("trang thai mpd {}".format(state))
+        if state.find("play") != -1:
+            song_info = client.currentsong()
+            s1 = json.dumps(song_info)
+            filename = json.loads(s1)["file"]
+            if filename.find(FileName) != -1:
+                #print("Playing with Song info : {}".format(filename))
+                return True
+            else:
+                #print("Mpd not play with {}".format(FileName))
+                return False
+        
+    except :
+        return False
+def SetVolume(volume):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.setvol(volume)
+        print("Volume set is {}".format(volume))
+    except :
+        print("Set Volume ERROR")
+        return False
+def GetVolume():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        
+        status = client.status()
+        print(client.status()['volume'])
+        s1 = json.dumps(status)
+        volume = json.loads(s1)["volume"]
+        print(volume)
+        return int(volume)
+        
+    except :
+        print("Get Volume ERROR")
+        return 50
+def GetStatusMpd():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        status = client.status()
+        return status
+    except :
+        print("Get Status ERROR")
+        return "Error"
+
+def PlayMpd(Url: str):
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.clearerror()
+        client.stop()
+        client.clear()
+        client.add(Url)
+        client.play(0)
+    except :
+        return False
+def StopMpd():
+    try:
+        client = MPDClient()
+        client.connect("localhost", 6600)
+        client.clearerror()
+        client.stop()
+        client.clear()
+    except :
+        return False

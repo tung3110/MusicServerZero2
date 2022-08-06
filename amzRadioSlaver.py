@@ -1,3 +1,5 @@
+\
+
 
 #!/usr/bin/python
 #from sense_hat
@@ -19,11 +21,38 @@ import subprocess
 import serial
 from amzGetDeviceID import getDeviceID
 from amzCheckStream import CheckStream
+import OPi.GPIO as GPIO
+#import orangepi.zero2
+#from OPi import GPIO
+#with patch("OPi.GPIO.sysfs") as mock:
+#        GPIO.setmode(orangepi.zero2.BOARD)
+#        GPIO.setup(12, GPIO.OUT)
+#        GPIO.output(12, GPIO.HIGH)
+#        mock.output.assert_called_with(14, GPIO.HIGH)
+#import orangepi.zero2
+# GPIO for USB GPIO272 GPIO262 
+# GPIO for LCD GPIO75
+# GPIO for EN_UP GPIO69
+# GPIO for EN_DOWN GPIO70
+# GPIO for En_ENTER GPIO72
+
+#GPIO.setboard(GPIO.H616) # Orange Pi Zero2 board
+#GPIO.setmode(orangepi.zero2.BOARD)
+#GPIO.setmode(GPIO.BOARD) 
+#GPIO.setup(29, GPIO.OUT) # For USB
+#GPIO.setup(31, GPIO.OUT) # For USB
+#GPIO.setup(12, GPIO.OUT) # For LCD
+#GPIO.setup(15, GPIO.IN) # For ENTER 
+#GPIO.setup(13, GPIO.IN) # For UP
+#GPIO.setup(11, GPIO.IN) # For DOWN
+#GPIO.output(29, 1)
+#GPIO.output(31, 1)
+#GPIO.output(12, 1)
 #from amzGetHostBroker import checkOutput
 #from amzStream import StreamStart
 from amzMQTT import ConectMQTT
 #from amzGetMpdSong import get_song_info
-from amzMpd import (UpdateMpd,GetListAlbumMpd,GetPlaylistMpd,FindAddPlaylist,GetListMpd,PauseMpd,NextMpd,PreviousMpd,GetSongMpd,CheckPlayMpd,PlayMpd,StopMpd,SetVolume,GetVolume,GetStatusMpd)
+from amzMpd import (GetListOutputs,SetOutputs,GetListDir,GetListFiles,GetListFiles2,PlayAddMpd,GetFilesAlbum,GetUpdateMpd,UpdateMpd,ClearPlaylistMpd,GetTitlesAlbum,GetListAlbumMpd,GetPlaylistMpd,FindAddPlaylist,GetListMpd,GetListMpd2,PauseMpd,NextMpd,PreviousMpd,GetSongMpd,CheckPlayMpd,PlayMpd,StopMpd,SetVolume,GetVolume,GetStatusMpd)
 from amzGetHostName import getHostIP
 from amzCheckDAC import CheckDac
 #from amzConnectWifi import ConnectWifi
@@ -48,6 +77,8 @@ HostRadioTech = "http://smart.radiotech.vn:3000/"
 MQTT_Flag = 0
 MQTT_Timeout = 20
 MQTT_Timeout_Online = 30
+MaxPlaylistPage = 7
+SerialPort = "ttyS5"
 #hostname = socket.gethostname()
 #local_ip = socket.gethostbyname(hostname)
 try:
@@ -88,6 +119,14 @@ STATE_ONLINE = 1
 VOLUME = GetVolume()
 print("Volume is {}".format(str(VOLUME)))
 PageModeLcd = 0
+#listfile = GetListFiles("usb1/ASIACD - Hòa Tấu TK Vũ Thành An - 2003")
+#listOutputs= GetListOutputs()
+#print(listOutputs)
+
+#SetOutputs(1,0)
+#SetOutputs(0,1)
+listOutputs= GetListOutputs()
+print(listOutputs)
 #output = checkOutput("avahi-browse -r _mqtt._tcp")
 def CheckFirstRun():
     with open('hostname.txt') as f:
@@ -442,8 +481,8 @@ def SendSerial(serial,Msg):
      #serial.write(255)
      #serial.write(255)
 ser = serial.Serial(
-          port = '/dev/{}'.format("ttyS5"),
-          baudrate = 9600,
+          port = '/dev/{}'.format(SerialPort),
+          baudrate = 115200,
           parity = serial.PARITY_NONE,
           stopbits = serial.STOPBITS_ONE,
           bytesize = serial.EIGHTBITS,
@@ -459,34 +498,178 @@ time.sleep(1)
 #SendSerial(ser,"t1.txt=\"%s\"" % (local_ip))
 #listMpd = GetListMpd("album")
 #print(listMpd)
-def SendAlbumLcd():
-    listMpd = GetListMpd("album")
-    #print(listMpd)
-    try:
-        s1 = json.dumps(listMpd[1])
-        album = json.loads(s1)["album"]
-        FindAddPlaylist("album",album)
-        SendSerial(ser,"t0.txt=\"%s\"" % (album))
-        print("album is %s" % (album))
-    except:
-        print("Can not read album")
 def SendTimeLcd():
      global ser
      timeNow = strftime("%H:%M:%S")
      SendSerial(ser,"t37.txt=\"%s\"" % (timeNow))
      #print("t7.txt=\"%s\"%c%c%c" % (timeNow,255,255,255))
-#SendAlbumLcd();
+#listTitle = GetListMpd("Title","album",")
+#SendAlbumLcd(1);
 UpdateMpd()
+IndexAlbum = 0
+#print("Titles: %s" % (GetTitlesAlbum(IndexAlbum)))
 playlist = GetPlaylistMpd()
-print(playlist)
+#print(playlist)
 albums = GetListAlbumMpd()
-print(albums)
+#print(albums)
 StatePlayOld = "stop"
 SongId = 0
 PlayListLength = 0
 def insert_newlines(string, every):
     return '\\r'.join(string[i:i+every] for i in range(0, len(string), every))
 SongName = ""
+IndexPlaylistPage = 0
+SongIdOld = 0
+#ListFile = GetListFiles("")
+#print(ListFile)
+def PlaylistMode(auto,indexPagePlaylist):
+           global MaxPlaylistPage,IndexPlaylistPage,SongName,StatePlayOld,SongId,PlayListLength,PageModeLcd,SongIdOld
+           if (SongId != SongIdOld) or (auto == False):
+               playlist = GetPlaylistMpd()
+               #print(playlist)
+               if len(playlist) == 0:
+                   clk = 2
+                   while clk <16:
+                        SendSerial(ser,"t%d.txt=\"%s\"" % (clk,""))
+                        clk = clk + 1
+               else:
+                   x = MaxPlaylistPage
+                   playlists = [playlist[i:i+x] for i in range(0, len(playlist), x)]
+                   if auto == True:
+                       indexPlaylist = int(SongId/x)
+                   else:
+                       indexPlaylist = indexPagePlaylist
+                   IndexPlaylistPage =  indexPlaylist
+                   Playlist = []
+                   Playlist = playlists[IndexPlaylistPage]
+                   #print(playlists)
+                   #print("Index %d, %s" % (indexPlaylist,Playlist))
+                   id = 1
+                   addEmpty = len(Playlist)
+                   print("Index %d,len  %d, %s" % (IndexPlaylistPage,len(Playlist),Playlist))
+                   while(addEmpty<x):
+                        Playlist.append("")
+                        addEmpty = addEmpty+1
+                   for item in Playlist:
+                       if item != "":
+                          SendSerial(ser,"t%d.txt=\"%d.%s\"" % (id+1,id+x*indexPlaylist,item))
+                       else:
+                          SendSerial(ser,"t%d.txt=\" \"" % (id+1))
+                       SendSerial(ser,"t%d.pco=65535" % (id+1))
+                       #songId = SongId % x
+                       #if (id == (songId+1)):
+                       if (id+x*indexPlaylist == SongId+1): 
+                            SendSerial(ser,"t%d.pco=65504" % (id+1))
+                       id = id + 1
+           SongIdOld = SongId
+indexAlbumPage = 0
+#PlaylistMode(False,0)
+def AlbumMode(indexPage):
+           global SongName,StatePlayOld,SongId,PlayListLength,PageModeLcd
+           album = GetListAlbumMpd()
+           if len(album) == 0:
+               clk = 2
+               while clk <16:
+                    SendSerial(ser,"t%d.txt=\"%s\"" % (clk,""))
+                    clk = clk + 1
+           else:
+               x = 14
+               albums = [album[i:i+x] for i in range(0, len(album), x)]
+               #indexPlaylist = int(SongId/14)
+
+               if(indexPage<len(albums)):
+                  Albums = albums[indexPage]
+               else:
+                  Albums = albums[len(albums)-1]
+               #print(playlists)
+               #print("Index %d, %s" % (indexPlaylist,Playlist))
+               id = 1
+               addEmpty = len(Albums)
+               while(addEmpty< x):
+                    Albums.append("")
+                    addEmpty = addEmpty+1
+               for item in Albums:
+                   if item != "":
+                      SendSerial(ser,"t%d.txt=\"%d.%s\"" % (id+1,id+x*indexPage,item))
+                   else:
+                      if(id !=1):
+                          SendSerial(ser,"t%d.txt=\"%s\"" % (id+1,""))
+                      else:
+                          SendSerial(ser,"t%d.txt=\"1.%s\"" % (id+1,"Unknow"))
+                   SendSerial(ser,"t%d.pco=65535" % (id+1))
+                   id = id + 1
+IndexPageFilse=0
+UrlIndex = ""
+ListFiles = []
+def FilesMode(dir,url,indexPageFiles):
+           global IndexPageFiles,ListFiles,SongName,StatePlayOld,SongId,PlayListLength,PageModeLcd
+           if dir == False:
+                listFiles = GetListFiles(url)
+           else:
+                listFiles = GetListDir(url)
+           if len(listFiles) == 0:
+               clk = 2
+               while clk <16:
+                    SendSerial(ser,"t%d.txt=\"%s\"" % (clk,""))
+                    clk = clk + 1
+           else:
+               SendSerial(ser,"t90.txt=\"%s\"" % (url))
+               x = 7
+               files = [listFiles[i:i+x] for i in range(0, len(listFiles), x)]
+               #indexPlaylist = int(SongId/14)
+
+               if(indexPageFiles<len(files)):
+                  Files = files[indexPageFiles]
+               else:
+                  Files = files[len(files)-1]
+                  IndexPageFiles = len(files)-1
+               ListFiles = Files
+               #print("Index %d, %s" % (indexPlaylist,Playlist))
+               id = 1
+               addEmpty = len(Files)
+               while(addEmpty< x):
+                    Files.append("")
+                    addEmpty = addEmpty+1
+               for item in Files:
+                   if item != "":
+                      SendSerial(ser,"t%d.txt=\"%s\"" % (id+1,item))
+                   else:
+                      if(id !=1):
+                          SendSerial(ser,"t%d.txt=\"%s\"" % (id+1,""))
+                      else:
+                          SendSerial(ser,"t%d.txt=\"1.%s\"" % (id+1,"Unknow"))
+                   SendSerial(ser,"t%d.pco=65535" % (id+1))
+                   id = id + 1
+
+FilesAlbum = []
+IndexTitlesAlbum = []
+TitleAlbum = ""
+def TitlesAlbum(IndexAlbum):
+              global TitleAlbum,IndexTitlesAlbum,FilesAlbum
+              #print("Titles : ")
+              maxSong = 14
+              #SendSerial(ser,"page page%d" % (7))
+              album = GetListAlbumMpd()
+              TitleAlbum = album[IndexAlbum]
+              SendSerial(ser,"g70.txt=\"%s\"" % (TitleAlbum))
+              titles = GetTitlesAlbum(IndexAlbum)
+              IndexTitlesAlbum = titles
+              #FilesAlbum = GetFilesAlbum(IndexAlbum)
+              #print(titles)
+              addEmpty = len(titles)
+              while(addEmpty< maxSong):
+                    titles.append("")
+                    addEmpty = addEmpty+1
+              id = 1
+              for item in titles:
+                   if item != "":
+                      SendSerial(ser,"t%d.txt=\"%d.%s\"" % (id+1,id,item))
+                   else:
+                      SendSerial(ser,"t%d.txt=\"%s\"" % (id+1,""))
+                   SendSerial(ser,"t%d.pco=65535" % (id+1))
+                   id = id + 1
+                   
+
 def SendStatusMpdLcd():
     global SongName,StatePlayOld,SongId,PlayListLength,PageModeLcd
     status = GetStatusMpd()
@@ -500,31 +683,7 @@ def SendStatusMpdLcd():
         #Volume = GetVolume()
         #print(status)
         if(PageModeLcd==3):
-           playlist = GetPlaylistMpd()
-           if len(playlist) == 0:
-               clk = 2
-               while clk <16:
-                    SendSerial(ser,"t%d.txt=\"%s\"" % (clk,""))
-                    clk = clk + 1
-           else:
-               x = 14
-               playlists = [playlist[i:i+x] for i in range(0, len(playlist), x)]
-               indexPlaylist = int(SongId/14)
-               Playlist = playlists[indexPlaylist]
-               print(playlists)
-               print("Index %d, %s" % (indexPlaylist,Playlist))
-               id = 1
-               addEmpty = len(Playlist)
-               while(addEmpty< 14):
-                    Playlist.append("")
-                    addEmpty = addEmpty+1
-               for item in Playlist:
-                   SendSerial(ser,"t%d.txt=\"%s\"" % (id+1,item))
-                   SendSerial(ser,"t%d.pco=65535" % (id+1))
-                   songId = SongId % 14
-                   if (id == (songId+1)):
-                        SendSerial(ser,"t%d.pco=65504" % (id+1))
-                   id = id + 1
+           PlaylistMode(True,IndexPlaylistPage)
         if state.find("play") != -1:
            SongId = int(json.loads(s1)["song"])
            audioBit = json.loads(s1)["audio"]
@@ -541,22 +700,36 @@ def SendStatusMpdLcd():
            SendSerial(ser, "t35.txt=\"%s/%s\"" % (timeNowStart,timeNowStop))
 
            song_info = GetSongMpd()
-           #print(song_info)
+           print(song_info)
            s1 = json.dumps(song_info)
-           songName  = json.loads(s1)["title"]
-           if len(songName)>30:
-               SongName = insert_newlines(songName,30)
-           else:
-                SongName = songName
+           try:
+               songName  = json.loads(s1)["title"]
+               if len(songName)>30:
+                   SongName = insert_newlines(songName,30)
+               else:
+                   SongName = songName
+
+           except:
+               SongName = "Unknow"      
+               print("Song not found")
+          
            SendSerial(ser,"t36.txt=\"%s\"" % (SongName))
-           album  = json.loads(s1)["album"]
+           print("debug step1")
+           try:
+                album  = json.loads(s1)["album"]
 #           if len(album)>30:
 #                Album = insert_newlines(album,30)
 #           else:
-           Album = album
+                Album = album
+           except:
+                Album = "Unknow"
            #Album = re.sub("(.{30})", "\\1\n", album, 0, re.DOTALL)
            SendSerial(ser,"g0.txt=\"Album: %s\"" % (Album))
-           Artist = json.loads(s1)["artist"]
+           try:
+                Artist = json.loads(s1)["artist"]
+           except:
+                Artist = "Unknow"
+           print("debug step2")
            SendSerial(ser,"t30.txt=\"Ar: %s\"" % (Artist))
            SendSerial(ser,"p1.pic=1")
            SendSerial(ser,"j1.val=%s" % (Volume))
@@ -575,6 +748,10 @@ def SendStatusMpdLcd():
            SendSerial(ser,"p1.pic=0")
     except:
         print("Can not Send Status Mpd")
+SendStatusMpdLcd()
+
+PlaylistMode(False,int(SongId/14))
+
 def SendSongMpdLcd():
     global StatePlayOld
     song_info = GetSongMpd()
@@ -585,16 +762,17 @@ def SendSongMpdLcd():
         
     except:
         print("Can not Send Mpd")
+UpdateStatus = 0
 class MyThread(Thread):
-    global MQTT_Flag_Local,PageModeLcd,MQTT_Timeout,MQTT_Flag,ConectMQTT2,STREAM_RUNNING_TIMEOUT,ser
+    global UpdateStatus,IndexAlbum,MQTT_Flag_Local,PageModeLcd,MQTT_Timeout,MQTT_Flag,ConectMQTT2,STREAM_RUNNING_TIMEOUT,ser
     def __init__(self, event):
         Thread.__init__(self)
         self.stopped = event
 
     def run(self):
-        global PageModeLcd,ser,checkDacOld,checkDac, MQTT_Timeout,MQTT_Flag,STREAM_RUNNING_TIMEOUT,MQTT_Timeout_Online
+        global UpdateStatus,indexAlbumPage,PageModeLcd,ser,checkDacOld,checkDac, MQTT_Timeout,MQTT_Flag,STREAM_RUNNING_TIMEOUT,MQTT_Timeout_Online
         while not self.stopped.wait(1): #timeout 1s
-            if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+            if ((PageModeLcd !=0) or (PageModeLcd !=2)):
                 SendStatusMpdLcd()
                 #SendSongMpdLcd()
                 #SendSerial(ser,"t1.txt={}".format(local_ip))
@@ -605,6 +783,10 @@ class MyThread(Thread):
                 SendSerial(ser,"t5.txt=\"Imei:{}\"".format(MountPoint))
             elif PageModeLcd ==0:
                 SendSerial(ser,"t0.txt=\"%s\"" % ("AMZ START"))
+            #elif PageModeLcd ==6:
+            #    AlbumMode(indexAlbumPage)
+            #elif PageModeLcd ==7:
+            #    TitlesAlbum(IndexAlbum)
             checkDac = CheckDac()
             if not checkDacOld:
                  if checkDac:
@@ -630,11 +812,41 @@ class MyThread(Thread):
                         MQTT_Flag = 1
                         print("MQTT Online  Not Receiver","ERROR")
                         conectMQTT.ConectMQTT()
-                
-
+            #if (GPIO.input(11)==False):
+            #    print("Enter ","Hign")
+            #    VOLUME = VOLUME + 5
+            #    SetVolume(VOLUME)
+            #    SendSerial(ser,"j1.val=%d" % (VOLUME))
+            #    SendSerial(ser,"t34.txt=\"%d\"" % (VOLUME))
+            #else :
+            #    print("Enter ","Low")
 stopFlag = Event()
 thread = MyThread(stopFlag)
 thread.start()
+class MyThread2(Thread):
+    def __init__(self, event):
+        Thread.__init__(self)
+        self.stopped = event
+
+    def run(self):
+        global UpdateStatus,indexAlbumPage,PageModeLcd,ser,checkDacOld,checkDac
+        while not self.stopped.wait(1): #timeout 1s
+            if(UpdateStatus==1):
+                UpdateMpd()
+                print("Update status:")
+                statusUpdate = GetUpdateMpd()
+                if len(statusUpdate)>0:
+                   print(statusUpdate)
+                   if statusUpdate[0].find("update") !=-1:
+                       UpdateStatus = 0
+                       SendSerial(ser,"t45.txt=\"%s\"" % ("Update Successfull"))
+                       SendSerial(ser,"t45.pco=%d" % (65535))
+                #print("Update status:")
+                #print("Update: %s" % (statusUpdate))
+ 
+stopFlag2 = Event()
+thread2 = MyThread2(stopFlag2)
+thread2.start()
 
 #conectMQTT = ConectMQTT(MQTT_BROKER_URL,MQTT_USER,MQTT_PASS,MQTT_PORT,on_connect_online,on_message_online)
 #conectMQTT.ConectMQTT()
@@ -695,9 +907,69 @@ def RadioProcessStick():
          STREAM_STATE_STR = "IDLE"
          STREAM_STATE = False
          #StopMpd()
+PageModeOld = 0
+#UpdateStatus = 0
 def SerialProcess(data):
-     global VOLUME,StatePlayOld,SongId,PageModeLcd
-     #print(data)
+     global ListFiles,UrlIndex,IndexPageFiles,TitleAlbum,IndexTitlesAlbum,FilesAlbum,UpdateStatus,PageModeOld,SongIdOld,IndexAlbum,ser,indexAlbumPage,IndexPlaylistPage,VOLUME,VolumeOld,StatePlayOld,SongId,PageModeLcd
+     print(data)
+     #Playliplaylist = GetPlaylistMpd()stMode()
+     if data.find('indexAlbumPage+') != -1:
+            album = GetListAlbumMpd()
+            if len(album)>0:
+                x = 20
+                albums = [album[i:i+x] for i in range(0, len(album), x)]
+                if len(albums)-1> indexAlbumPage:
+                     indexAlbumPage = indexAlbumPage + 1
+                     AlbumMode(indexAlbumPage)
+     if data.find('indexAlbumPage-') != -1:
+            if indexAlbumPage>0:
+               indexAlbumPage = indexAlbumPage - 1
+               AlbumMode(indexAlbumPage)
+     if data.find('indexPlaylistPage+') != -1:
+            playlist = GetPlaylistMpd()
+            if len(playlist)>0:
+                x = MaxPlaylistPage
+                playlists = [playlist[i:i+x] for i in range(0, len(playlist), x)]
+                if len(playlists)-1> IndexPlaylistPage:
+                     IndexPlaylistPage = IndexPlaylistPage + 1
+                     PlaylistMode(False,IndexPlaylistPage)
+     if data.find('indexPlaylistPage-') != -1:
+            if IndexPlaylistPage>0:
+               IndexPlaylistPage = IndexPlaylistPage - 1
+               PlaylistMode(False,IndexPlaylistPage)
+     if data.find('indexFilesPage+') != -1:
+            IndexPageFiles = IndexPageFiles + 1
+            FilesMode(True,UrlIndex,IndexPageFiles)
+            #playlist = GetPlaylistMpd()
+            #if len(playlist)>0:
+            #    x = MaxPlaylistPage
+            #    playlists = [playlist[i:i+x] for i in range(0, len(playlist), x)]
+            #    if len(playlists)-1> IndexPlaylistPage:
+            #         IndexPlaylistPage = IndexPlaylistPage + 1
+            #         PlaylistMode(False,IndexPlaylistPage)
+     if data.find('indexFilesPage-') != -1:
+            if(IndexPageFiles>0):
+                IndexPageFiles = IndexPageFiles - 1
+                FilesMode(True,UrlIndex,IndexPageFiles)
+            #if IndexPlaylistPage>0:
+            #   IndexPlaylistPage = IndexPlaylistPage - 1
+            #   PlaylistMode(False,IndexPlaylistPage)
+
+     if data.find('mute') != -1:
+          if(VOLUME==0):
+              VOLUME = VolumeOld
+              SetVolume(VOLUME)
+              SendSerial(ser,"p9.pic=%d" % (19))
+              SendSerial(ser,"j1.val=%d" % (VOLUME))
+              SendSerial(ser,"t34.txt=\"%d\"" % (VOLUME))
+          else:
+              VOLUME = 0
+              SetVolume(VOLUME)
+              SendSerial(ser,"p9.pic=%d" % (18))
+              SendSerial(ser,"j1.val=%d" % (VOLUME))
+              SendSerial(ser,"t34.txt=\"%d\"" % (VOLUME))
+     if(VOLUME>0):
+        VolumeOld = VOLUME
      if data.find('Volume+') != -1:
           VOLUME = VOLUME + 5
           SetVolume(VOLUME)
@@ -709,39 +981,259 @@ def SerialProcess(data):
           SetVolume(VOLUME)
           SendSerial(ser,"j1.val=%d" % (VOLUME))
           SendSerial(ser,"t34.txt=\"%d\"" % (VOLUME))
+     if data.find('album') != -1:
+        if PageModeLcd==6:
+           try:
+              #album = GetListAlbumMpd()
+              #PageModeLcd = int(data[5:])
+              indexAlbum = int(data[5:])
+              SendSerial(ser,"tm1.tim=0")
+              SendSerial(ser,"tm1.en=0")
+              SendSerial(ser,"page page%d" % (7))
+              IndexAlbum = indexAlbum+14*indexAlbumPage
+              TitlesAlbum(IndexAlbum)
+              #FindAddPlaylist("album",album[indexAlbum])
+              #print("indexAlbume %d" % (indexAlbume))
+           except:
+               print("Error get data album")
+
      if data.find('page') != -1:
           try:
               PageModeLcd = int(data[4:])
               print("Page %d" % (PageModeLcd))
+              if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                if(PageModeOld != PageModeLcd):
+                    SongIdOld = 1000
+                SendStatusMpdLcd()
+                #SendSongMpdLcd()
+                #SendSerial(ser,"t1.txt={}".format(local_ip))
+                #SendSerial(ser,"t1.txt=\"%s\"" % (local_ip))
+                SendTimeLcd()
+              elif PageModeLcd ==2:
+                SendSerial(ser,"t6.txt=\"IP:{}\"".format (local_ip))
+                SendSerial(ser,"t5.txt=\"Imei:{}\"".format(MountPoint))
+              elif PageModeLcd ==0:
+                SendSerial(ser,"t0.txt=\"%s\"" % ("AMZ START"))
+              elif PageModeLcd ==6:
+                AlbumMode(indexAlbumPage)
+              elif PageModeLcd ==7:
+                TitlesAlbum(IndexAlbum)
+              elif PageModeLcd ==5:
+                listOutputs = GetListOutputs()
+                #print(listOutputs)
+                if PageModeOld != PageModeLcd:
+                    for item in listOutputs:
+                       SendSerial(ser,"c%d.val=%d" % (int(item["outputid"]),int(item["outputenabled"])))
+              #elif PageModeLcd ==9:
+                #FilesMode(UrlIndex,IndexPageFiles)
+              PageModeOld = PageModeLcd
           except:
                print("Error get data")
                print(data[4:])
+     if data.find('usb') != -1:
+          try:
+              if data.find('usb1/') != -1 or data.find('usb2/') != -1:
+                  SendSerial(ser,"tm1.tim=0")
+                  SendSerial(ser,"tm1.en=0")
+                  SendSerial(ser,"page page%d" % (9))
+                  UrlIndex = data[:4]
+              else:
+              #indexUsb = int(data[3:])
+                  SendSerial(ser,"tm1.tim=0")
+                  SendSerial(ser,"tm1.en=0")
+                  SendSerial(ser,"page page%d" % (9))
+                  UrlIndex = data
+              IndexPageFiles = 0
+              FilesMode(True,UrlIndex,IndexPageFiles)
+          except:
+               print("Error file page")
+     if data.find('files') != -1:
+          try:
+              indexfiles = int(data[5:])
+              #SendSerial(ser,"tm1.tim=0")
+              #SendSerial(ser,"tm1.en=0")
+              #SendSerial(ser,"page page%d" % (9))
+              UrlIndex = "%s/%s" % (UrlIndex,ListFiles[indexfiles])
+              print(UrlIndex)
+              IndexPageFiles = 0
+              FilesMode(False,UrlIndex,IndexPageFiles)
+          except:
+               print("Error file page")
+
+     if data.find('addPlaylist') != -1:
+          #if PageModeLcd ==7:
+              print("addClearPlaylist Send Page1")
+              #SendSerial(ser,"page page3")
+              #time.sleep(0.1)
+              #ClearPlaylistMpd()
+              album = GetListAlbumMpd()
+          #SendSerial(ser,"g70.txt=\"%s\"" % (album[IndexAlbum]))
+              FindAddPlaylist("album",album[IndexAlbum])
+              #PlayMpd(0)
+              #SongIdOld = 1000
+              #SendStatusMpdLcd()
+              print("addClearPlaylist")
+              SendSerial(ser,"tm1.tim=0")
+              SendSerial(ser,"tm1.en=0")
+              SendSerial(ser,"page page3")
+              time.sleep(0.1)
+              SongIdOld = 1000
+              SendStatusMpdLcd()
+              #SendSerial(ser,"page page%d" % (3))
+              #SongIdOld = 1000
+
+     if data.find('addClearPlaylist') != -1:
+          #if PageModeLcd ==7:
+              print("addClearPlaylist Send Page1")
+              #SendSerial(ser,"page page3")
+              #time.sleep(0.1)
+              ClearPlaylistMpd()
+              album = GetListAlbumMpd()
+          #SendSerial(ser,"g70.txt=\"%s\"" % (album[IndexAlbum]))
+              FindAddPlaylist("album",album[IndexAlbum])
+              PlayMpd(0)
+              #SongIdOld = 1000
+              #SendStatusMpdLcd()
+              print("addClearPlaylist")
+              SendSerial(ser,"tm1.tim=0")
+              SendSerial(ser,"tm1.en=0")
+              SendSerial(ser,"page page3")
+              time.sleep(0.1)
+              SongIdOld = 1000
+              SendStatusMpdLcd()
+              #SendSerial(ser,"page page%d" % (3))
+              #SongIdOld = 1000
+     if data.find('addFilesPlayPlaylist') != -1:
+          #if PageModeLcd ==7:
+              print("addFilesPlayPlaylist Send Page1")
+              #SendSerial(ser,"page page3")
+              #time.sleep(0.1)
+              ClearPlaylistMpd()
+              LISTFILES = GetListFiles2(UrlIndex)
+              print(LISTFILES)
+              #album = GetListAlbumMpd()
+          #SendSerial(ser,"g70.txt=\"%s\"" % (album[IndexAlbum]))
+              for item in LISTFILES:
+                  #print(item)
+                  FindAddPlaylist("file",item)
+              PlayMpd(0)
+              #SongIdOld = 1000
+              #SendStatusMpdLcd()
+              print("addFilesPlayPlaylist")
+              SendSerial(ser,"tm1.tim=0")
+              SendSerial(ser,"tm1.en=0")
+              SendSerial(ser,"page page3")
+              time.sleep(0.1)
+              SongIdOld = 1000
+              SendStatusMpdLcd()
+              #SendSerial(ser,"page page%d" % (3))
+              #SongIdOld = 1000
+     if data.find('addFilesPlaylist') != -1:
+          #if PageModeLcd ==7:
+              print("addFilesPlaylist Send Page1")
+              #SendSerial(ser,"page page3")
+              #time.sleep(0.1)
+              #ClearPlaylistMpd()
+              LISTFILES = GetListFiles2(UrlIndex)
+              print(LISTFILES)
+              #album = GetListAlbumMpd()
+          #SendSerial(ser,"g70.txt=\"%s\"" % (album[IndexAlbum]))
+              for item in LISTFILES:
+                  #print(item)
+                  FindAddPlaylist("file",item)
+              #PlayMpd(0)
+              #SongIdOld = 1000
+              #SendStatusMpdLcd()
+              print("addFilesPlayPlaylist")
+              SendSerial(ser,"tm1.tim=0")
+              SendSerial(ser,"tm1.en=0")
+              SendSerial(ser,"page page3")
+              time.sleep(0.1)
+              SongIdOld = 1000
+              SendStatusMpdLcd()
+              #SendSerial(ser,"page page%d" % (3))
+              #SongIdOld = 1000
+     if data.find('SetOutputs') != -1:
+         list = data.split(",")
+         idOutput = int(list[1])
+         enableOutputs = int(list[2])
+         SetOutputs(idOutput,enableOutputs)
+         listOutputs = GetListOutputs()
+         for item in listOutputs:
+                       SendSerial(ser,"c%d.val=%d" % (int(item["outputid"]),int(item["outputenabled"])))
+    
      if data.find('Play') != -1:
+         if PageModeLcd==3:
             try:
-                SongId = int(data[4:])
+                SongId = int(data[4:])+ IndexPlaylistPage*MaxPlaylistPage
                 PlayMpd(SongId)
+                if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
             except:
                 print("Play error")
+         elif PageModeLcd ==7:
+            try:
+                SongId = int(data[4:])
+                #+ IndexPlaylistPage*14
+                #PlayMpd(SongId)
+                if len(IndexTitlesAlbum)>0:
+                    Title = IndexTitlesAlbum[SongId]
+                    PlayAddMpd(Title,TitleAlbum)
+                    print(Title)
+            except:
+                print("Play error")
+
      if StatePlayOld.find('stop') != -1:
         if data.find('play') != -1:
            PlayMpd(SongId)
+           if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+               SendStatusMpdLcd()
            print("Play Id = %d" %(SongId))
      elif  StatePlayOld.find('play')  != -1:
            if data.find('play') != -1:
                PauseMpd(1) 
+               if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
+
                print("Pause Start")
      elif  StatePlayOld.find('pause') != -1:
            if data.find('play') != -1:
                PauseMpd(0)
+               if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
+
                print("Pause Stop")
      if data.find('next') != -1:
            NextMpd()
+           if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
            print("Next")
+     if data.find('update') != -1:
+           os.system("sudo systemctl restart mpd.service")
+           time.sleep(1)
+           UpdateMpd()
+           UpdateStatus = 1
+           
+           #statusMpd = GetStatusMpd()
+           #print(statusMpd)
+           #statusUpdate = GetUpdateMpd()
+           #if len(statusUpdate)>0:
+           #    if statusUpdate[0].find("update") !=-1:
+           #       UpdateStatus = 0
+           #       SendSerial(ser,"t45.txt=\"%s\"" % ("Update Successfull"))
+           #       SendSerial(ser,"t45.pco=%d" % (65504))
+           #print(statusUpdate)
      if data.find('previous') != -1:
            PreviousMpd()
+           if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
+
            print("Previous")
      if data.find('stop') != -1:
            StopMpd()
+           if ((PageModeLcd ==1) or (PageModeLcd ==3) or (PageModeLcd ==4)):
+                    SendStatusMpdLcd()
+
            print("Stop")
 while True:
         try:
